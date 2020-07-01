@@ -12,7 +12,6 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb/commontests"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,6 +37,14 @@ func TestIterator(t *testing.T) {
 	env := NewTestVDBEnv(t)
 	defer env.Cleanup()
 	commontests.TestIterator(t, env.DBProvider)
+	t.Run("test-iter-error-path", func(t *testing.T) {
+		db, err := env.DBProvider.GetDBHandle("testiterator", nil)
+		require.NoError(t, err)
+		env.DBProvider.Close()
+		itr, err := db.GetStateRangeScanIterator("ns1", "", "")
+		require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
+		require.Nil(t, itr)
+	})
 }
 
 func TestDataKeyEncoding(t *testing.T) {
@@ -49,16 +56,16 @@ func testDataKeyEncoding(t *testing.T, dbName string, ns string, key string) {
 	dataKey := encodeDataKey(ns, key)
 	t.Logf("dataKey=%#v", dataKey)
 	ns1, key1 := decodeDataKey(dataKey)
-	assert.Equal(t, ns, ns1)
-	assert.Equal(t, key, key1)
+	require.Equal(t, ns, ns1)
+	require.Equal(t, key, key1)
 }
 
 // TestQueryOnLevelDB tests queries on levelDB.
 func TestQueryOnLevelDB(t *testing.T) {
 	env := NewTestVDBEnv(t)
 	defer env.Cleanup()
-	db, err := env.DBProvider.GetDBHandle("testquery")
-	assert.NoError(t, err)
+	db, err := env.DBProvider.GetDBHandle("testquery", nil)
+	require.NoError(t, err)
 	db.Open()
 	defer db.Close()
 	batch := statedb.NewUpdateBatch()
@@ -72,8 +79,8 @@ func TestQueryOnLevelDB(t *testing.T) {
 	// As queries are not supported in levelDB, call to ExecuteQuery()
 	// should return a error message
 	itr, err := db.ExecuteQuery("ns1", `{"selector":{"owner":"jerry"}}`)
-	assert.Error(t, err, "ExecuteQuery not supported for leveldb")
-	assert.Nil(t, itr)
+	require.Error(t, err, "ExecuteQuery not supported for leveldb")
+	require.Nil(t, itr)
 }
 
 func TestGetStateMultipleKeys(t *testing.T) {
@@ -92,15 +99,15 @@ func TestUtilityFunctions(t *testing.T) {
 	env := NewTestVDBEnv(t)
 	defer env.Cleanup()
 
-	db, err := env.DBProvider.GetDBHandle("testutilityfunctions")
-	assert.NoError(t, err)
+	db, err := env.DBProvider.GetDBHandle("testutilityfunctions", nil)
+	require.NoError(t, err)
 
 	// BytesKeySupported should be true for goleveldb
 	byteKeySupported := db.BytesKeySupported()
-	assert.True(t, byteKeySupported)
+	require.True(t, byteKeySupported)
 
 	// ValidateKeyValue should return nil for a valid key and value
-	assert.NoError(t, db.ValidateKeyValue("testKey", []byte("testValue")), "leveldb should accept all key-values")
+	require.NoError(t, db.ValidateKeyValue("testKey", []byte("testValue")), "leveldb should accept all key-values")
 }
 
 func TestValueAndMetadataWrites(t *testing.T) {
@@ -149,7 +156,7 @@ func TestFullScanIteratorErrorPropagation(t *testing.T) {
 	initEnv := func() {
 		env = NewTestVDBEnv(t)
 		vdbProvider = env.DBProvider
-		db, err := vdbProvider.GetDBHandle("TestFullScanIteratorErrorPropagation")
+		db, err := vdbProvider.GetDBHandle("TestFullScanIteratorErrorPropagation", nil)
 		require.NoError(t, err)
 		vdb = db.(*versionedDB)
 		cleanup = func() {
@@ -185,31 +192,4 @@ func TestFullScanIteratorErrorPropagation(t *testing.T) {
 	itr.Close()
 	_, _, err = itr.Next()
 	require.Contains(t, err.Error(), "internal leveldb error while retrieving data from db iterator:")
-
-	// error from function Next when switching to new iterator for skipping a namespace
-	reInitEnv()
-	batch := statedb.NewUpdateBatch()
-	batch.Put("ns1", "key1", []byte("value1"), version.NewHeight(1, 1))
-	batch.Put("ns2", "key2", []byte("value2"), version.NewHeight(1, 1))
-	batch.Put("ns3", "key3", []byte("value3"), version.NewHeight(1, 1))
-	vdb.ApplyUpdates(batch, version.NewHeight(2, 2))
-
-	itr, _, err = vdb.GetFullScanIterator(
-		func(ns string) bool {
-			return ns == "ns2"
-		},
-	)
-	require.NoError(t, err)
-	compositeKey, _, err := itr.Next()
-	require.NoError(t, err)
-	require.Equal(t,
-		&statedb.CompositeKey{
-			Namespace: "ns1",
-			Key:       "key1",
-		},
-		compositeKey,
-	)
-	vdbProvider.Close()
-	compositeKey, _, err = itr.Next()
-	require.Contains(t, err.Error(), "internal leveldb error while obtaining db iterator for skipping a namespace [ns2]:")
 }

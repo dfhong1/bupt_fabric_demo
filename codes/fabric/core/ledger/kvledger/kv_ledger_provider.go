@@ -9,6 +9,8 @@ package kvledger
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -22,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/msgs"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
 	"github.com/hyperledger/fabric/core/ledger/pvtdatastorage"
+	"github.com/hyperledger/fabric/internal/fileutil"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -67,14 +70,13 @@ type Provider struct {
 	pvtdataStoreProvider *pvtdatastorage.Provider
 	dbProvider           *privacyenabledstate.DBProvider
 	historydbProvider    *history.DBProvider
-	configHistoryMgr     confighistory.Mgr
+	configHistoryMgr     *confighistory.Mgr
 	stateListeners       []ledger.StateListener
 	bookkeepingProvider  bookkeeping.Provider
 	initializer          *ledger.Initializer
 	collElgNotifier      *collElgNotifier
 	stats                *stats
 	fileLock             *leveldbhelper.FileLock
-	hasher               ledger.Hasher
 }
 
 // NewProvider instantiates a new Provider.
@@ -82,7 +84,6 @@ type Provider struct {
 func NewProvider(initializer *ledger.Initializer) (pr *Provider, e error) {
 	p := &Provider{
 		initializer: initializer,
-		hasher:      initializer.Hasher,
 	}
 
 	defer func() {
@@ -110,35 +111,28 @@ func NewProvider(initializer *ledger.Initializer) (pr *Provider, e error) {
 	if err := p.initLedgerIDInventory(); err != nil {
 		return nil, err
 	}
-
 	if err := p.initBlockStoreProvider(); err != nil {
 		return nil, err
 	}
-
 	if err := p.initPvtDataStoreProvider(); err != nil {
 		return nil, err
 	}
-
 	if err := p.initHistoryDBProvider(); err != nil {
 		return nil, err
 	}
-
 	if err := p.initConfigHistoryManager(); err != nil {
 		return nil, err
 	}
-
 	p.initCollElgNotifier()
-
 	p.initStateListeners()
-
 	if err := p.initStateDBProvider(); err != nil {
 		return nil, err
 	}
-
 	p.initLedgerStatistics()
-
 	p.recoverUnderConstructionLedger()
-
+	if err := p.initSnapshotDir(); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -252,6 +246,27 @@ func (p *Provider) initLedgerStatistics() {
 	p.stats = newStats(p.initializer.MetricsProvider)
 }
 
+func (p *Provider) initSnapshotDir() error {
+	snapshotsRootDir := p.initializer.Config.SnapshotsConfig.RootDir
+	if !path.IsAbs(snapshotsRootDir) {
+		return errors.Errorf("invalid path: %s. The path for the snapshot dir is expected to be an absolute path", snapshotsRootDir)
+	}
+
+	inProgressSnapshotsPath := InProgressSnapshotsPath(snapshotsRootDir)
+	completedSnapshotsPath := CompletedSnapshotsPath(snapshotsRootDir)
+
+	if err := os.RemoveAll(inProgressSnapshotsPath); err != nil {
+		return errors.Wrapf(err, "error while deleting the dir: %s", inProgressSnapshotsPath)
+	}
+	if err := os.MkdirAll(inProgressSnapshotsPath, 0755); err != nil {
+		return errors.Wrapf(err, "error while creating the dir: %s", inProgressSnapshotsPath)
+	}
+	if err := os.MkdirAll(completedSnapshotsPath, 0755); err != nil {
+		return errors.Wrapf(err, "error while creating the dir: %s", completedSnapshotsPath)
+	}
+	return fileutil.SyncDir(snapshotsRootDir)
+}
+
 // Create implements the corresponding method from interface ledger.PeerLedgerProvider
 // This functions sets a under construction flag before doing any thing related to ledger creation and
 // upon a successful ledger creation with the committed genesis block, removes the flag and add entry into
@@ -319,7 +334,8 @@ func (p *Provider) open(ledgerID string) (ledger.PeerLedger, error) {
 	p.collElgNotifier.registerListener(ledgerID, pvtdataStore)
 
 	// Get the versioned database (state database) for a chain/ledger
-	db, err := p.dbProvider.GetDBHandle(ledgerID)
+	channelInfoProvider := &channelInfoProvider{ledgerID, blockStore, p.collElgNotifier.deployedChaincodeInfoProvider}
+	db, err := p.dbProvider.GetDBHandle(ledgerID, channelInfoProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +362,8 @@ func (p *Provider) open(ledgerID string) (ledger.PeerLedger, error) {
 		ccLifecycleEventProvider: p.initializer.ChaincodeLifecycleEventProvider,
 		stats:                    p.stats.ledgerStats(ledgerID),
 		customTxProcessors:       p.initializer.CustomTxProcessors,
-		hasher:                   p.hasher,
+		hashProvider:             p.initializer.HashProvider,
+		snapshotsConfig:          p.initializer.Config.SnapshotsConfig,
 	}
 
 	l, err := newKVLedger(initializer)
@@ -428,7 +445,6 @@ func (p *Provider) recoverUnderConstructionLedger() {
 			"data inconsistency: under construction flag is set for ledger [%s] while the height of the blockchain is [%d]",
 			ledgerID, bcInfo.Height))
 	}
-	return
 }
 
 // runCleanup cleans up blockstorage, statedb, and historydb for what
@@ -645,9 +661,8 @@ func (s *idStore) getLedgerMetadata(ledgerID string) (*msgs.LedgerMetadata, erro
 
 func (s *idStore) ledgerIDExists(ledgerID string) (bool, error) {
 	key := s.encodeLedgerKey(ledgerID, ledgerKeyPrefix)
-	val := []byte{}
-	err := error(nil)
-	if val, err = s.db.Get(key); err != nil {
+	val, err := s.db.Get(key)
+	if err != nil {
 		return false, err
 	}
 	return val != nil, nil

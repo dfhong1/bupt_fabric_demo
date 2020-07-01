@@ -19,7 +19,7 @@ import (
 
 // TestGetStateMultipleKeys tests read for given multiple keys
 func TestGetStateMultipleKeys(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testgetmultiplekeys")
+	db, err := dbProvider.GetDBHandle("testgetmultiplekeys", nil)
 	assert.NoError(t, err)
 
 	// Test that savepoint is nil for a new state db
@@ -48,7 +48,7 @@ func TestGetStateMultipleKeys(t *testing.T, dbProvider statedb.VersionedDBProvid
 
 // TestBasicRW tests basic read-write
 func TestBasicRW(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testbasicrw")
+	db, err := dbProvider.GetDBHandle("testbasicrw", nil)
 	assert.NoError(t, err)
 
 	// Test that savepoint is nil for a new state db
@@ -93,10 +93,10 @@ func TestBasicRW(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
 // TestMultiDBBasicRW tests basic read-write on multiple dbs
 func TestMultiDBBasicRW(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db1, err := dbProvider.GetDBHandle("testmultidbbasicrw")
+	db1, err := dbProvider.GetDBHandle("testmultidbbasicrw", nil)
 	assert.NoError(t, err)
 
-	db2, err := dbProvider.GetDBHandle("testmultidbbasicrw2")
+	db2, err := dbProvider.GetDBHandle("testmultidbbasicrw2", nil)
 	assert.NoError(t, err)
 
 	batch1 := statedb.NewUpdateBatch()
@@ -132,7 +132,7 @@ func TestMultiDBBasicRW(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
 // TestDeletes tests deletes
 func TestDeletes(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testdeletes")
+	db, err := dbProvider.GetDBHandle("testdeletes", nil)
 	assert.NoError(t, err)
 
 	batch := statedb.NewUpdateBatch()
@@ -167,7 +167,7 @@ func TestDeletes(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
 // TestIterator tests the iterator
 func TestIterator(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testiterator")
+	db, err := dbProvider.GetDBHandle("testiterator", nil)
 	assert.NoError(t, err)
 	db.Open()
 	defer db.Close()
@@ -209,7 +209,7 @@ func testItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []string) {
 
 // TestQuery tests queries
 func TestQuery(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testquery")
+	db, err := dbProvider.GetDBHandle("testquery", nil)
 	assert.NoError(t, err)
 	db.Open()
 	defer db.Close()
@@ -298,11 +298,11 @@ func TestQuery(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 	assert.Nil(t, queryResult1)
 
 	// query using bad query string
-	itr, err = db.ExecuteQuery("ns1", "this is an invalid query string")
+	_, err = db.ExecuteQuery("ns1", "this is an invalid query string")
 	assert.Error(t, err, "Should have received an error for invalid query string")
 
 	// query returns 0 records
-	itr, err = db.ExecuteQuery("ns1", `{"selector":{"owner":"not_a_valid_name"}}`)
+	_, err = db.ExecuteQuery("ns1", `{"selector":{"owner":"not_a_valid_name"}}`)
 	assert.NoError(t, err)
 
 	// verify no results
@@ -489,7 +489,7 @@ func TestQuery(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 // TestGetVersion tests retrieving the version by namespace and key
 func TestGetVersion(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
-	db, err := dbProvider.GetDBHandle("testgetversion")
+	db, err := dbProvider.GetDBHandle("testgetversion", nil)
 	assert.NoError(t, err)
 
 	batch := statedb.NewUpdateBatch()
@@ -546,7 +546,7 @@ func TestGetVersion(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
 // TestSmallBatchSize tests multiple update batches
 func TestSmallBatchSize(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testsmallbatchsize")
+	db, err := dbProvider.GetDBHandle("testsmallbatchsize", nil)
 	assert.NoError(t, err)
 	db.Open()
 	defer db.Close()
@@ -616,7 +616,7 @@ func TestSmallBatchSize(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 // TestBatchWithIndividualRetry tests a single failure in a batch
 func TestBatchWithIndividualRetry(t *testing.T, dbProvider statedb.VersionedDBProvider) {
 
-	db, err := dbProvider.GetDBHandle("testbatchretry")
+	db, err := dbProvider.GetDBHandle("testbatchretry", nil)
 	assert.NoError(t, err)
 
 	batch := statedb.NewUpdateBatch()
@@ -724,7 +724,7 @@ func TestBatchWithIndividualRetry(t *testing.T, dbProvider statedb.VersionedDBPr
 
 // TestValueAndMetadataWrites tests statedb for value and metadata read-writes
 func TestValueAndMetadataWrites(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testvalueandmetadata")
+	db, err := dbProvider.GetDBHandle("testvalueandmetadata", nil)
 	assert.NoError(t, err)
 	batch := statedb.NewUpdateBatch()
 
@@ -754,7 +754,7 @@ func TestValueAndMetadataWrites(t *testing.T, dbProvider statedb.VersionedDBProv
 
 // TestPaginatedRangeQuery tests range queries with pagination
 func TestPaginatedRangeQuery(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testpaginatedrangequery")
+	db, err := dbProvider.GetDBHandle("testpaginatedrangequery", nil)
 	assert.NoError(t, err)
 	db.Open()
 	defer db.Close()
@@ -881,7 +881,7 @@ func TestPaginatedRangeQuery(t *testing.T, dbProvider statedb.VersionedDBProvide
 
 // TestRangeQuerySpecialCharacters tests range queries for keys with special characters and/or non-English characters
 func TestRangeQuerySpecialCharacters(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("testrangequeryspecialcharacters")
+	db, err := dbProvider.GetDBHandle("testrangequeryspecialcharacters", nil)
 	assert.NoError(t, err)
 	db.Open()
 	defer db.Close()
@@ -965,7 +965,7 @@ func TestItrWithoutClose(t *testing.T, itr statedb.ResultsIterator, expectedKeys
 }
 
 func TestApplyUpdatesWithNilHeight(t *testing.T, dbProvider statedb.VersionedDBProvider) {
-	db, err := dbProvider.GetDBHandle("test-apply-updates-with-nil-height")
+	db, err := dbProvider.GetDBHandle("test-apply-updates-with-nil-height", nil)
 	assert.NoError(t, err)
 
 	batch1 := statedb.NewUpdateBatch()
@@ -989,7 +989,7 @@ func TestFullScanIterator(
 	valueFormat byte,
 	dbValueDeserializer func(b []byte) (*statedb.VersionedValue, error)) {
 
-	db, err := dbProvider.GetDBHandle("test-full-scan-iterator")
+	db, err := dbProvider.GetDBHandle("test-full-scan-iterator", nil)
 	assert.NoError(t, err)
 
 	// generateSampleData returns a slice of KVs. The returned value contains five KVs for each of the namespaces
@@ -1016,7 +1016,7 @@ func TestFullScanIterator(
 
 	// add the sample data for four namespaces to the db
 	batch := statedb.NewUpdateBatch()
-	for _, kv := range generateSampleData("ns1", "ns2", "ns3", "ns4") {
+	for _, kv := range generateSampleData("", "ns1", "ns2", "ns3", "ns4") {
 		batch.PutValAndMetadata(kv.Namespace, kv.Key, kv.Value, kv.Metadata, kv.Version)
 	}
 	db.ApplyUpdates(batch, version.NewHeight(5, 5))
@@ -1045,29 +1045,35 @@ func TestFullScanIterator(
 			})
 		}
 
-		expectedNamespacesInResults := stringset{"ns1", "ns2", "ns3", "ns4"}.minus(skipNamespaces)
+		expectedNamespacesInResults := stringset{"", "ns1", "ns2", "ns3", "ns4"}.minus(skipNamespaces)
 		expectedResults := []*statedb.VersionedKV{}
 		for _, ns := range expectedNamespacesInResults {
 			expectedResults = append(expectedResults, generateSampleData(ns)...)
 		}
 		require.Equal(t, expectedResults, results)
-		fmt.Printf("Len = %d", len(results))
 	}
 
-	// skip no namespaces
-	verifyFullScanIterator(stringset{})
-	// skip the first namespace
-	verifyFullScanIterator(stringset{"ns1"})
-	// skip the middle namespace
-	verifyFullScanIterator(stringset{"ns2"})
-	// skip the last namespace
-	verifyFullScanIterator(stringset{"ns4"})
-	// skip the first two namespaces
-	verifyFullScanIterator(stringset{"ns1", "ns2"})
-	// skip the last two namespaces
-	verifyFullScanIterator(stringset{"ns3", "ns4"})
-	// skip all the namespaces
-	verifyFullScanIterator(stringset{"ns1", "ns2", "ns3", "ns4"})
+	testCases := []stringset{
+		{},                               // skip no namespaces
+		{"", "ns1", "ns2", "ns3", "ns4"}, // skip all the namespaces
+		{""},                             // skip the first namespace
+		{"ns2"},                          // skip the middle namespace
+		{"ns4"},                          // skip the last namespace
+		{"", "ns1"},                      // skip the first two namespaces
+		{"ns3", "ns4"},                   // skip the last two namespaces
+		{"", "ns3"},                      // skip two non-consequitive namespaces
+		{"ns1", "ns4"},                   // skip two non-consequitive namespaces
+		{"", "ns4"},                      // skip the first and last namespace
+	}
+
+	for i, testCase := range testCases {
+		t.Run(
+			fmt.Sprintf("testCase %d", i),
+			func(t *testing.T) {
+				verifyFullScanIterator(testCase)
+			},
+		)
+	}
 }
 
 type stringset []string

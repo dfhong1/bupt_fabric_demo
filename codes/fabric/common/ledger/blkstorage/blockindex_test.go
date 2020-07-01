@@ -9,9 +9,10 @@ package blkstorage
 import (
 	"crypto/sha256"
 	"fmt"
+	"hash"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -22,8 +23,13 @@ import (
 	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	"github.com/hyperledger/fabric/protoutil"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	testNewHashFunc = func() (hash.Hash, error) {
+		return sha256.New(), nil
+	}
 )
 
 func TestBlockIndexSync(t *testing.T) {
@@ -57,14 +63,14 @@ func testBlockIndexSync(t *testing.T, numBlocks int, numBlocksToIndex int, syncB
 		// Verify that the first set of blocks are indexed in the original index
 		for i := 0; i < numBlocksToIndex; i++ {
 			block, err := blkfileMgr.retrieveBlockByNumber(uint64(i))
-			assert.NoError(t, err, "block [%d] should have been present in the index", i)
-			assert.Equal(t, blocks[i], block)
+			require.NoError(t, err, "block [%d] should have been present in the index", i)
+			require.Equal(t, blocks[i], block)
 		}
 
 		// Before, we test for index sync-up, verify that the last set of blocks not indexed in the original index
 		for i := numBlocksToIndex + 1; i <= numBlocks; i++ {
 			_, err := blkfileMgr.retrieveBlockByNumber(uint64(i))
-			assert.Exactly(t, ErrNotFoundInIndex, err)
+			require.Exactly(t, ErrNotFoundInIndex, err)
 		}
 
 		// perform index sync
@@ -80,8 +86,8 @@ func testBlockIndexSync(t *testing.T, numBlocks int, numBlocksToIndex int, syncB
 		// Now, last set of blocks should also be indexed in the original index
 		for i := numBlocksToIndex; i < numBlocks; i++ {
 			block, err := blkfileMgr.retrieveBlockByNumber(uint64(i))
-			assert.NoError(t, err, "block [%d] should have been present in the index", i)
-			assert.Equal(t, blocks[i], block)
+			require.NoError(t, err, "block [%d] should have been present in the index", i)
+			require.Equal(t, blocks[i], block)
 		}
 	})
 }
@@ -116,56 +122,56 @@ func testBlockIndexSelectiveIndexing(t *testing.T, indexItems []IndexableAttr) {
 		// test 'retrieveBlockByHash'
 		block, err := blockfileMgr.retrieveBlockByHash(protoutil.BlockHeaderHash(blocks[0].Header))
 		if containsAttr(indexItems, IndexableAttrBlockHash) {
-			assert.NoError(t, err, "Error while retrieving block by hash")
-			assert.Equal(t, blocks[0], block)
+			require.NoError(t, err, "Error while retrieving block by hash")
+			require.Equal(t, blocks[0], block)
 		} else {
-			assert.Exactly(t, ErrAttrNotIndexed, err)
+			require.Exactly(t, ErrAttrNotIndexed, err)
 		}
 
 		// test 'retrieveBlockByNumber'
 		block, err = blockfileMgr.retrieveBlockByNumber(0)
 		if containsAttr(indexItems, IndexableAttrBlockNum) {
-			assert.NoError(t, err, "Error while retrieving block by number")
-			assert.Equal(t, blocks[0], block)
+			require.NoError(t, err, "Error while retrieving block by number")
+			require.Equal(t, blocks[0], block)
 		} else {
-			assert.Exactly(t, ErrAttrNotIndexed, err)
+			require.Exactly(t, ErrAttrNotIndexed, err)
 		}
 
 		// test 'retrieveTransactionByID'
 		txid, err := protoutil.GetOrComputeTxIDFromEnvelope(blocks[0].Data.Data[0])
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		txEnvelope, err := blockfileMgr.retrieveTransactionByID(txid)
 		if containsAttr(indexItems, IndexableAttrTxID) {
-			assert.NoError(t, err, "Error while retrieving tx by id")
+			require.NoError(t, err, "Error while retrieving tx by id")
 			txEnvelopeBytes := blocks[0].Data.Data[0]
 			txEnvelopeOrig, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
-			assert.NoError(t, err)
-			assert.Equal(t, txEnvelopeOrig, txEnvelope)
+			require.NoError(t, err)
+			require.Equal(t, txEnvelopeOrig, txEnvelope)
 		} else {
-			assert.Exactly(t, ErrAttrNotIndexed, err)
+			require.Exactly(t, ErrAttrNotIndexed, err)
 		}
 
 		//test 'retrieveTrasnactionsByBlockNumTranNum
 		txEnvelope2, err := blockfileMgr.retrieveTransactionByBlockNumTranNum(0, 0)
 		if containsAttr(indexItems, IndexableAttrBlockNumTranNum) {
-			assert.NoError(t, err, "Error while retrieving tx by blockNum and tranNum")
+			require.NoError(t, err, "Error while retrieving tx by blockNum and tranNum")
 			txEnvelopeBytes2 := blocks[0].Data.Data[0]
 			txEnvelopeOrig2, err2 := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes2)
-			assert.NoError(t, err2)
-			assert.Equal(t, txEnvelopeOrig2, txEnvelope2)
+			require.NoError(t, err2)
+			require.Equal(t, txEnvelopeOrig2, txEnvelope2)
 		} else {
-			assert.Exactly(t, ErrAttrNotIndexed, err)
+			require.Exactly(t, ErrAttrNotIndexed, err)
 		}
 
 		// test 'retrieveBlockByTxID'
 		txid, err = protoutil.GetOrComputeTxIDFromEnvelope(blocks[0].Data.Data[0])
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		block, err = blockfileMgr.retrieveBlockByTxID(txid)
 		if containsAttr(indexItems, IndexableAttrTxID) {
-			assert.NoError(t, err, "Error while retrieving block by txID")
-			assert.Equal(t, block, blocks[0])
+			require.NoError(t, err, "Error while retrieving block by txID")
+			require.Equal(t, block, blocks[0])
 		} else {
-			assert.Exactly(t, ErrAttrNotIndexed, err)
+			require.Exactly(t, ErrAttrNotIndexed, err)
 		}
 
 		for _, block := range blocks {
@@ -173,18 +179,18 @@ func testBlockIndexSelectiveIndexing(t *testing.T, indexItems []IndexableAttr) {
 
 			for idx, d := range block.Data.Data {
 				txid, err = protoutil.GetOrComputeTxIDFromEnvelope(d)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				reason, err := blockfileMgr.retrieveTxValidationCodeByTxID(txid)
 
 				if containsAttr(indexItems, IndexableAttrTxID) {
-					assert.NoError(t, err, "Error while retrieving tx validation code by txID")
+					require.NoError(t, err, "Error while retrieving tx validation code by txID")
 
 					reasonFromFlags := flags.Flag(idx)
 
-					assert.Equal(t, reasonFromFlags, reason)
+					require.Equal(t, reasonFromFlags, reason)
 				} else {
-					assert.Exactly(t, ErrAttrNotIndexed, err)
+					require.Exactly(t, ErrAttrNotIndexed, err)
 				}
 			}
 		}
@@ -263,20 +269,27 @@ func TestExportUniqueTxIDs(t *testing.T) {
 	defer blkfileMgrWrapper.close()
 	blkfileMgr := blkfileMgrWrapper.blockfileMgr
 
-	bg, gb := testutil.NewBlockGenerator(t, "myChannel", false)
-	blkfileMgr.addBlock(gb)
-
 	testSnapshotDir := testPath()
 	defer os.RemoveAll(testSnapshotDir)
 
+	// empty store generates no output
+	fileHashes, err := blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
+	require.NoError(t, err)
+	require.Empty(t, fileHashes)
+	files, err := ioutil.ReadDir(testSnapshotDir)
+	require.NoError(t, err)
+	require.Len(t, files, 0)
+
 	// add genesis block and test the exported bytes
+	bg, gb := testutil.NewBlockGenerator(t, "myChannel", false)
+	blkfileMgr.addBlock(gb)
 	configTxID, err := protoutil.GetOrComputeTxIDFromEnvelope(gb.Data.Data[0])
 	require.NoError(t, err)
-	fileHashes, err := blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.NoError(t, err)
 	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, configTxID)
-	os.Remove(path.Join(testSnapshotDir, snapshotDataFileName))
-	os.Remove(path.Join(testSnapshotDir, snapshotMetadataFileName))
+	os.Remove(filepath.Join(testSnapshotDir, snapshotDataFileName))
+	os.Remove(filepath.Join(testSnapshotDir, snapshotMetadataFileName))
 
 	// add block-1 and test the exported bytes
 	block1 := bg.NextBlockWithTxid(
@@ -290,11 +303,11 @@ func TestExportUniqueTxIDs(t *testing.T) {
 	)
 	err = blkfileMgr.addBlock(block1)
 	require.NoError(t, err)
-	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.NoError(t, err)
 	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, "txid-1", "txid-2", "txid-3", configTxID) //"txid-1" appears once, Txids appear in radix sort order
-	os.Remove(path.Join(testSnapshotDir, snapshotDataFileName))
-	os.Remove(path.Join(testSnapshotDir, snapshotMetadataFileName))
+	os.Remove(filepath.Join(testSnapshotDir, snapshotDataFileName))
+	os.Remove(filepath.Join(testSnapshotDir, snapshotMetadataFileName))
 
 	// add block-2 and test the exported bytes
 	block2 := bg.NextBlockWithTxid(
@@ -308,7 +321,7 @@ func TestExportUniqueTxIDs(t *testing.T) {
 	blkfileMgr.addBlock(block2)
 	require.NoError(t, err)
 
-	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.NoError(t, err)
 	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, "txid-1", "txid-2", "txid-3", "txid-4", "txid-0000000", configTxID) // "txid-1", and "txid-3 appears once and Txids appear in radix sort order
 }
@@ -324,7 +337,7 @@ func TestExportUniqueTxIDsWhenTxIDsNotIndexed(t *testing.T) {
 
 	testSnapshotDir := testPath()
 	defer os.RemoveAll(testSnapshotDir)
-	_, err := blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	_, err := blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.Equal(t, err, ErrAttrNotIndexed)
 }
 
@@ -344,34 +357,34 @@ func TestExportUniqueTxIDsErrorCases(t *testing.T) {
 	defer os.RemoveAll(testSnapshotDir)
 
 	// error during data file creation
-	dataFilePath := path.Join(testSnapshotDir, snapshotDataFileName)
+	dataFilePath := filepath.Join(testSnapshotDir, snapshotDataFileName)
 	_, err := os.Create(dataFilePath)
 	require.NoError(t, err)
-	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.Contains(t, err.Error(), "error while creating the snapshot file: "+dataFilePath)
 	os.RemoveAll(testSnapshotDir)
 
 	// error during metadata file creation
 	fmt.Printf("testSnapshotDir=%s", testSnapshotDir)
 	require.NoError(t, os.MkdirAll(testSnapshotDir, 0700))
-	metadataFilePath := path.Join(testSnapshotDir, snapshotMetadataFileName)
+	metadataFilePath := filepath.Join(testSnapshotDir, snapshotMetadataFileName)
 	_, err = os.Create(metadataFilePath)
 	require.NoError(t, err)
-	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.Contains(t, err.Error(), "error while creating the snapshot file: "+metadataFilePath)
 	os.RemoveAll(testSnapshotDir)
 
 	// error while retrieving the txid key
 	require.NoError(t, os.MkdirAll(testSnapshotDir, 0700))
 	index.db.Put([]byte{txIDIdxKeyPrefix}, []byte("some junk value"), true)
-	_, err = index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	_, err = index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.EqualError(t, err, "invalid txIDKey {74}: number of consumed bytes from DecodeVarint is invalid, expected 1, but got 0")
 	os.RemoveAll(testSnapshotDir)
 
 	// error while reading from leveldb
 	require.NoError(t, os.MkdirAll(testSnapshotDir, 0700))
 	env.provider.leveldbProvider.Close()
-	_, err = index.exportUniqueTxIDs(testSnapshotDir, sha256.New())
+	_, err = index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
 	require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
 	os.RemoveAll(testSnapshotDir)
 }
@@ -381,13 +394,13 @@ func verifyExportedTxIDs(t *testing.T, dir string, fileHashes map[string][]byte,
 	require.Contains(t, fileHashes, snapshotDataFileName)
 	require.Contains(t, fileHashes, snapshotMetadataFileName)
 
-	dataFile := path.Join(dir, snapshotDataFileName)
+	dataFile := filepath.Join(dir, snapshotDataFileName)
 	dataFileContent, err := ioutil.ReadFile(dataFile)
 	require.NoError(t, err)
 	dataFileHash := sha256.Sum256(dataFileContent)
 	require.Equal(t, dataFileHash[:], fileHashes[snapshotDataFileName])
 
-	metadataFile := path.Join(dir, snapshotMetadataFileName)
+	metadataFile := filepath.Join(dir, snapshotMetadataFileName)
 	metadataFileContent, err := ioutil.ReadFile(metadataFile)
 	require.NoError(t, err)
 	metadataFileHash := sha256.Sum256(metadataFileContent)
@@ -436,12 +449,4 @@ func verifyTxIDKeyDecodable(t *testing.T, txIDKey []byte, expectedTxID string, e
 	require.NoError(t, err)
 	require.Equal(t, expectedTxNum, txNum)
 	require.Len(t, txIDKey, firstIndexTxNum+n)
-}
-
-type errorThrowingWriter struct {
-	err error
-}
-
-func (w *errorThrowingWriter) Write(p []byte) (n int, err error) {
-	return 0, w.err
 }

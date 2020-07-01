@@ -12,15 +12,15 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb/stateleveldb"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCombinedIterator(t *testing.T) {
 	testDBEnv := stateleveldb.NewTestVDBEnv(t)
 	defer testDBEnv.Cleanup()
 
-	db, err := testDBEnv.DBProvider.GetDBHandle("TestDB")
-	assert.NoError(t, err)
+	db, err := testDBEnv.DBProvider.GetDBHandle("TestDB", nil)
+	require.NoError(t, err)
 
 	// populate db with initial data
 	batch := statedb.NewUpdateBatch()
@@ -98,11 +98,11 @@ func checkItrResults(t *testing.T, testName string, itr statedb.ResultsIterator,
 	t.Run(testName, func(t *testing.T) {
 		for i := 0; i < len(expectedResults); i++ {
 			res, _ := itr.Next()
-			assert.Equal(t, expectedResults[i], res)
+			require.Equal(t, expectedResults[i], res)
 		}
 		lastRes, err := itr.Next()
-		assert.NoError(t, err)
-		assert.Nil(t, lastRes)
+		require.NoError(t, err)
+		require.Nil(t, lastRes)
 	})
 }
 

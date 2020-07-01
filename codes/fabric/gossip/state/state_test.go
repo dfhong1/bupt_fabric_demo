@@ -282,7 +282,7 @@ func (mock *ramLedger) GetPvtDataAndBlockByNum(blockNum uint64, filter ledger.Pv
 	defer mock.RUnlock()
 
 	if block, ok := mock.ledger[blockNum]; !ok {
-		return nil, errors.New(fmt.Sprintf("no block with seq = %d found", blockNum))
+		return nil, fmt.Errorf("no block with seq = %d found", blockNum)
 	} else {
 		return block, nil
 	}
@@ -324,7 +324,7 @@ func (mock *ramLedger) GetBlockByNumber(blockNumber uint64) (*pcomm.Block, error
 	defer mock.RUnlock()
 
 	if blockAndPvtData, ok := mock.ledger[blockNumber]; !ok {
-		return nil, errors.New(fmt.Sprintf("no block with seq = %d found", blockNumber))
+		return nil, fmt.Errorf("no block with seq = %d found", blockNumber)
 	} else {
 		return blockAndPvtData.Block, nil
 	}
@@ -387,11 +387,13 @@ func newPeerNodeWithGossipWithValidatorWithMetrics(logger gutil.Logger, id int, 
 			AliveExpirationTimeout:       discovery.DefAliveExpirationTimeout,
 			AliveExpirationCheckInterval: discovery.DefAliveExpirationCheckInterval,
 			ReconnectInterval:            discovery.DefReconnectInterval,
+			MaxConnectionAttempts:        discovery.DefMaxConnectionAttempts,
+			MsgExpirationFactor:          discovery.DefMsgExpirationFactor,
 		}
 
 		selfID := api.PeerIdentityType(config.InternalEndpoint)
 		mcs := &cryptoServiceMock{acceptor: noopPeerIdentityAcceptor}
-		g = gossip.New(config, gRPCServer.Server(), &orgCryptoService{}, mcs, selfID, secureDialOpts, gossipMetrics)
+		g = gossip.New(config, gRPCServer.Server(), &orgCryptoService{}, mcs, selfID, secureDialOpts, gossipMetrics, nil)
 	}
 
 	g.JoinChan(&joinChanMsg{}, common.ChannelID("testchannelid"))
@@ -427,7 +429,7 @@ func newPeerNodeWithGossipWithValidatorWithMetrics(logger gutil.Logger, id int, 
 		StateMaxRetries:      DefStateMaxRetries,
 		StateBlockBufferSize: DefStateBlockBufferSize,
 		StateChannelSize:     DefStateChannelSize,
-		StateEnabled:         DefStateEnabled,
+		StateEnabled:         true,
 	}
 	sp := NewGossipStateProvider(logger, "testchannelid", servicesAdapater, coord, gossipMetrics.StateMetrics, blocking, stateConfig)
 	if sp == nil {
@@ -1392,7 +1394,7 @@ func TestTransferOfPrivateRWSet(t *testing.T) {
 		StateMaxRetries:      DefStateMaxRetries,
 		StateBlockBufferSize: DefStateBlockBufferSize,
 		StateChannelSize:     DefStateChannelSize,
-		StateEnabled:         DefStateEnabled,
+		StateEnabled:         true,
 	}
 	logger := flogging.MustGetLogger(gutil.StateLogger)
 	st := NewGossipStateProvider(logger, chainID, servicesAdapater, coord1, stateMetrics, blocking, stateConfig)
@@ -1638,7 +1640,7 @@ func TestTransferOfPvtDataBetweenPeers(t *testing.T) {
 		StateMaxRetries:      DefStateMaxRetries,
 		StateBlockBufferSize: DefStateBlockBufferSize,
 		StateChannelSize:     DefStateChannelSize,
-		StateEnabled:         DefStateEnabled,
+		StateEnabled:         true,
 	}
 	logger := flogging.MustGetLogger(gutil.StateLogger)
 	peer1State := NewGossipStateProvider(logger, chainID, mediator, peers["peer1"].coord, stateMetrics, blocking, stateConfig)

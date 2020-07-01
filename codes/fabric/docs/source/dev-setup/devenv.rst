@@ -63,7 +63,7 @@ These need to be ``false`` and ``true`` respectively.
 
 The ``curl`` command that comes with Git and Docker Toolbox is old and
 does not handle properly the redirect used in
-:doc:`getting_started`. Make sure you have and use a newer version
+:doc:`../getting_started`. Make sure you have and use a newer version
 which can be downloaded from the `cURL downloads page
 <https://curl.haxx.se/download.html>`__
 
@@ -81,7 +81,7 @@ the repository.
     git clone https://github.com/<your_github_userid>/fabric
 
 .. note::
-    If you are running Windows, before cloning the repository, run thefollowing
+    If you are running Windows, before cloning the repository, run the following
     command:
 
     ::

@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb/stateleveldb"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRangeQueryBoundaryConditions(t *testing.T) {
@@ -57,18 +57,18 @@ func testRangeQuery(t *testing.T, testcase string, stateData *statedb.UpdateBatc
 	t.Run(testcase, func(t *testing.T) {
 		testDBEnv := stateleveldb.NewTestVDBEnv(t)
 		defer testDBEnv.Cleanup()
-		db, err := testDBEnv.DBProvider.GetDBHandle("TestDB")
-		assert.NoError(t, err)
+		db, err := testDBEnv.DBProvider.GetDBHandle("TestDB", nil)
+		require.NoError(t, err)
 		if stateData != nil {
 			db.ApplyUpdates(stateData, savepoint)
 		}
 
 		itr, err := db.GetStateRangeScanIterator(ns, rqi.StartKey, rqi.EndKey)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		qv := &rangeQueryResultsValidator{}
 		qv.init(rqi, itr)
 		isValid, err := qv.validate()
-		assert.NoError(t, err)
-		assert.Equal(t, expectedResult, isValid)
+		require.NoError(t, err)
+		require.Equal(t, expectedResult, isValid)
 	})
 }

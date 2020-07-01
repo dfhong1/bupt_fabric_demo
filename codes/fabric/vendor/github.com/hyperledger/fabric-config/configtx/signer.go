@@ -10,6 +10,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
@@ -41,13 +42,17 @@ func (s *SigningIdentity) Public() crypto.PublicKey {
 }
 
 // Sign performs ECDSA sign with this signing identity's private key on the
-// given digest. It ensures signatures are created with Low S values since
-// Fabric normalizes all signatures to Low S.
+// given message hashed using SHA-256. It ensures signatures are created with
+// Low S values since Fabric normalizes all signatures to Low S.
 // See https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki#low_s
 // for more detail.
-func (s *SigningIdentity) Sign(reader io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+func (s *SigningIdentity) Sign(reader io.Reader, msg []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	switch pk := s.PrivateKey.(type) {
 	case *ecdsa.PrivateKey:
+		hasher := sha256.New()
+		hasher.Write(msg)
+		digest := hasher.Sum(nil)
+
 		rr, ss, err := ecdsa.Sign(reader, pk, digest)
 		if err != nil {
 			return nil, err
@@ -85,7 +90,7 @@ func toLowS(key ecdsa.PublicKey, sig ecdsaSignature) ecdsaSignature {
 
 // CreateConfigSignature creates a config signature for the the given configuration
 // update using the specified signing identity.
-func (s *SigningIdentity) CreateConfigSignature(configUpdate *cb.ConfigUpdate) (*cb.ConfigSignature, error) {
+func (s *SigningIdentity) CreateConfigSignature(marshaledUpdate []byte) (*cb.ConfigSignature, error) {
 	signatureHeader, err := s.signatureHeader()
 	if err != nil {
 		return nil, fmt.Errorf("creating signature header: %v", err)
@@ -100,14 +105,9 @@ func (s *SigningIdentity) CreateConfigSignature(configUpdate *cb.ConfigUpdate) (
 		SignatureHeader: header,
 	}
 
-	configUpdateBytes, err := proto.Marshal(configUpdate)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling config update: %v", err)
-	}
-
 	configSignature.Signature, err = s.Sign(
 		rand.Reader,
-		concatenateBytes(configSignature.SignatureHeader, configUpdateBytes),
+		concatenateBytes(configSignature.SignatureHeader, marshaledUpdate),
 		nil,
 	)
 	if err != nil {

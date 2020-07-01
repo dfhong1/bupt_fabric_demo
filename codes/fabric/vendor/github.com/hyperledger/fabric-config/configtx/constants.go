@@ -23,9 +23,6 @@ const (
 	// of a BlockDataHashingStructure.
 	BlockDataHashingStructureKey = "BlockDataHashingStructure"
 
-	// OrdererAddressesKey is the key for the ConfigValue, OrdererAddresses.
-	OrdererAddressesKey = "OrdererAddresses"
-
 	// CapabilitiesKey is the key for the ConfigValue, capabilities.
 	// CapabiltiesKey can be used at the channel, application, and orderer levels.
 	CapabilitiesKey = "Capabilities"
@@ -87,4 +84,7 @@ const (
 	SignaturePolicyType = "Signature"
 
 	ordererAdminsPolicyName = "/Channel/Orderer/Admins"
+
+	// OrdererAddressesKey is the key for the ConfigValue of OrdererAddresses.
+	OrdererAddressesKey = "OrdererAddresses"
 )

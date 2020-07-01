@@ -186,7 +186,7 @@ func InstallChaincode(n *Network, chaincode Chaincode, peers ...*Peer) {
 			ClientAuth:  n.ClientAuthRequired,
 		})
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		EventuallyWithOffset(1, sess, n.EventuallyTimeout).Should(gexec.Exit(0))
+		EventuallyWithOffset(1, sess, n.EventuallyTimeout).Should(gexec.Exit())
 
 		EnsureInstalled(n, chaincode.Label, chaincode.PackageID, p)
 	}
@@ -447,9 +447,6 @@ func QueryInstalledReferences(n *Network, channel, label, packageID string, chec
 			},
 		)),
 	)
-}
-
-func QueryInstalledNoReferences(n *Network, channel, label, packageID string, checkPeer *Peer) {
 }
 
 type queryInstalledOutput struct {

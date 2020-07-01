@@ -100,11 +100,6 @@ type docMetadata struct {
 	AttachmentsInfo map[string]*attachmentInfo `json:"_attachments"`
 }
 
-//docID is a minimal structure for capturing the ID from a query result
-type docID struct {
-	ID string `json:"_id"`
-}
-
 //queryResult is used for returning query results from CouchDB
 type queryResult struct {
 	id          string
@@ -155,12 +150,6 @@ type fileDetails struct {
 	Length      int    `json:"length"`
 }
 
-//couchDoc defines the structure for a JSON document value
-type couchDoc struct {
-	jsonValue   []byte
-	attachments []*attachmentInfo
-}
-
 //batchRetrieveDocMetadataResponse is used for processing REST batch responses from CouchDB
 type batchRetrieveDocMetadataResponse struct {
 	Rows []struct {
@@ -207,6 +196,21 @@ type databaseSecurity struct {
 	} `json:"members"`
 }
 
+//couchDoc defines the structure for a JSON document value
+type couchDoc struct {
+	jsonValue   []byte
+	attachments []*attachmentInfo
+}
+
+func (d *couchDoc) key() (string, error) {
+	m := make(jsonValue)
+	if err := json.Unmarshal(d.jsonValue, &m); err != nil {
+		return "", err
+	}
+	return m[idField].(string), nil
+
+}
+
 // closeResponseBody discards the body and then closes it to enable returning it to
 // connection pool
 func closeResponseBody(resp *http.Response) {
@@ -218,7 +222,6 @@ func closeResponseBody(resp *http.Response) {
 
 //createDatabaseIfNotExist method provides function to create database
 func (dbclient *couchDatabase) createDatabaseIfNotExist() error {
-
 	logger.Debugf("[%s] Entering CreateDatabaseIfNotExist()", dbclient.dbName)
 
 	dbInfo, couchDBReturn, err := dbclient.getDatabaseInfo()
@@ -228,73 +231,46 @@ func (dbclient *couchDatabase) createDatabaseIfNotExist() error {
 		}
 	}
 
-	//If the dbInfo returns populated and status code is 200, then the database exists
-	if dbInfo != nil && couchDBReturn.StatusCode == 200 {
+	if dbInfo == nil || couchDBReturn.StatusCode == 404 {
+		logger.Debugf("[%s] Database does not exist.", dbclient.dbName)
 
-		//Apply database security if needed
+		connectURL, err := url.Parse(dbclient.couchInstance.url())
+		if err != nil {
+			logger.Errorf("URL parse error: %s", err)
+			return errors.Wrapf(err, "error parsing CouchDB URL: %s", dbclient.couchInstance.url())
+		}
+
+		//get the number of retries
+		maxRetries := dbclient.couchInstance.conf.MaxRetries
+
+		//process the URL with a PUT, creates the database
+		resp, _, err := dbclient.handleRequest(http.MethodPut, "CreateDatabaseIfNotExist", connectURL, nil, "", "", maxRetries, true, nil)
+		if err != nil {
+			// Check to see if the database exists
+			// Even though handleRequest() returned an error, the
+			// database may have been created and a false error
+			// returned due to a timeout or race condition.
+			// Do a final check to see if the database really got created.
+			dbInfo, couchDBReturn, dbInfoErr := dbclient.getDatabaseInfo()
+			if dbInfoErr != nil || dbInfo == nil || couchDBReturn.StatusCode == 404 {
+				return err
+			}
+		}
+		defer closeResponseBody(resp)
+		logger.Infof("Created state database %s", dbclient.dbName)
+	} else {
+		logger.Debugf("[%s] Database already exists", dbclient.dbName)
+	}
+
+	if dbclient.dbName != "_users" {
 		errSecurity := dbclient.applyDatabasePermissions()
 		if errSecurity != nil {
 			return errSecurity
 		}
-
-		logger.Debugf("[%s] Database already exists", dbclient.dbName)
-
-		logger.Debugf("[%s] Exiting CreateDatabaseIfNotExist()", dbclient.dbName)
-
-		return nil
 	}
-
-	logger.Debugf("[%s] Database does not exist.", dbclient.dbName)
-
-	connectURL, err := url.Parse(dbclient.couchInstance.url())
-	if err != nil {
-		logger.Errorf("URL parse error: %s", err)
-		return errors.Wrapf(err, "error parsing CouchDB URL: %s", dbclient.couchInstance.url())
-	}
-
-	//get the number of retries
-	maxRetries := dbclient.couchInstance.conf.MaxRetries
-
-	//process the URL with a PUT, creates the database
-	resp, _, err := dbclient.handleRequest(http.MethodPut, "CreateDatabaseIfNotExist", connectURL, nil, "", "", maxRetries, true, nil)
-
-	if err != nil {
-
-		// Check to see if the database exists
-		// Even though handleRequest() returned an error, the
-		// database may have been created and a false error
-		// returned due to a timeout or race condition.
-		// Do a final check to see if the database really got created.
-		dbInfo, couchDBReturn, errDbInfo := dbclient.getDatabaseInfo()
-		//If there is no error, then the database exists,  return without an error
-		if errDbInfo == nil && dbInfo != nil && couchDBReturn.StatusCode == 200 {
-
-			errSecurity := dbclient.applyDatabasePermissions()
-			if errSecurity != nil {
-				return errSecurity
-			}
-
-			logger.Infof("[%s] Created state database", dbclient.dbName)
-			logger.Debugf("[%s] Exiting CreateDatabaseIfNotExist()", dbclient.dbName)
-			return nil
-		}
-
-		return err
-
-	}
-	defer closeResponseBody(resp)
-
-	errSecurity := dbclient.applyDatabasePermissions()
-	if errSecurity != nil {
-		return errSecurity
-	}
-
-	logger.Infof("Created state database %s", dbclient.dbName)
 
 	logger.Debugf("[%s] Exiting CreateDatabaseIfNotExist()", dbclient.dbName)
-
 	return nil
-
 }
 
 func (dbclient *couchDatabase) applyDatabasePermissions() error {
@@ -521,70 +497,17 @@ func (dbclient *couchDatabase) dropDatabase() (*dbOperationResponse, error) {
 		return nil, errors.Wrap(decodeErr, "error decoding response body")
 	}
 
-	if dbResponse.Ok == true {
+	if dbResponse.Ok {
 		logger.Debugf("[%s] Dropped database", dbclient.dbName)
 	}
 
 	logger.Debugf("[%s] Exiting DropDatabase()", dbclient.dbName)
 
-	if dbResponse.Ok == true {
-
+	if dbResponse.Ok {
 		return dbResponse, nil
-
 	}
 
 	return dbResponse, errors.New("error dropping database")
-
-}
-
-// ensureFullCommit calls _ensure_full_commit for explicit fsync
-func (dbclient *couchDatabase) ensureFullCommit() (*dbOperationResponse, error) {
-	dbName := dbclient.dbName
-
-	logger.Debugf("[%s] Entering EnsureFullCommit()", dbName)
-
-	connectURL, err := url.Parse(dbclient.couchInstance.url())
-	if err != nil {
-		logger.Errorf("URL parse error: %s", err)
-		return nil, errors.Wrapf(err, "error parsing CouchDB URL: %s", dbclient.couchInstance.url())
-	}
-
-	//get the number of retries
-	maxRetries := dbclient.couchInstance.conf.MaxRetries
-
-	resp, _, err := dbclient.handleRequest(http.MethodPost, "EnsureFullCommit", connectURL, nil, "", "", maxRetries, true, nil, "_ensure_full_commit")
-	if err != nil {
-		logger.Errorf("Failed to invoke couchdb _ensure_full_commit. Error: %+v", err)
-		return nil, err
-	}
-	defer closeResponseBody(resp)
-
-	dbResponse := &dbOperationResponse{}
-	decodeErr := json.NewDecoder(resp.Body).Decode(&dbResponse)
-	if decodeErr != nil {
-		return nil, errors.Wrap(decodeErr, "error decoding response body")
-	}
-
-	// check if we should warm indexes
-	if dbclient.couchInstance.conf.WarmIndexesAfterNBlocks > 0 {
-		// check to see if the number of blocks committed exceeds the threshold for index warming
-		if dbclient.indexWarmCounter >= dbclient.couchInstance.conf.WarmIndexesAfterNBlocks {
-			// use a go routine to launch WarmIndexAllIndexes()
-			go dbclient.runWarmIndexAllIndexes()
-			dbclient.indexWarmCounter = 0
-		}
-		dbclient.indexWarmCounter++
-	}
-
-	logger.Debugf("[%s] Exiting EnsureFullCommit()", dbclient.dbName)
-
-	if dbResponse.Ok == true {
-
-		return dbResponse, nil
-
-	}
-
-	return dbResponse, errors.New("error syncing database")
 }
 
 //saveDoc method provides a function to save a document, id and byte array
@@ -604,7 +527,7 @@ func (dbclient *couchDatabase) saveDoc(id string, rev string, couchDoc *couchDoc
 	}
 
 	//Set up a buffer for the data to be pushed to couchdb
-	data := []byte{}
+	var data []byte
 
 	//Set up a default boundary for use by multipart if sending attachments
 	defaultBoundary := ""
@@ -616,7 +539,7 @@ func (dbclient *couchDatabase) saveDoc(id string, rev string, couchDoc *couchDoc
 	if couchDoc.attachments == nil {
 
 		//Test to see if this is a valid JSON
-		if isJSON(string(couchDoc.jsonValue)) != true {
+		if !isJSON(string(couchDoc.jsonValue)) {
 			return "", errors.New("JSON format is not valid")
 		}
 
@@ -626,7 +549,7 @@ func (dbclient *couchDatabase) saveDoc(id string, rev string, couchDoc *couchDoc
 	} else { // there are attachments
 
 		//attachments are included, create the multipart definition
-		multipartData, multipartBoundary, err3 := createAttachmentPart(couchDoc, defaultBoundary)
+		multipartData, multipartBoundary, err3 := createAttachmentPart(couchDoc)
 		if err3 != nil {
 			return "", err3
 		}
@@ -683,7 +606,7 @@ func (dbclient *couchDatabase) getDocumentRevision(id string) string {
 	return rev
 }
 
-func createAttachmentPart(couchDoc *couchDoc, defaultBoundary string) (bytes.Buffer, string, error) {
+func createAttachmentPart(couchDoc *couchDoc) (bytes.Buffer, string, error) {
 
 	//Create a buffer for writing the result
 	writeBuffer := new(bytes.Buffer)
@@ -692,7 +615,7 @@ func createAttachmentPart(couchDoc *couchDoc, defaultBoundary string) (bytes.Buf
 	writer := multipart.NewWriter(writeBuffer)
 
 	//retrieve the boundary for the multipart
-	defaultBoundary = writer.Boundary()
+	defaultBoundary := writer.Boundary()
 
 	fileAttachments := map[string]fileDetails{}
 
@@ -701,7 +624,8 @@ func createAttachmentPart(couchDoc *couchDoc, defaultBoundary string) (bytes.Buf
 	}
 
 	attachmentJSONMap := map[string]interface{}{
-		"_attachments": fileAttachments}
+		"_attachments": fileAttachments,
+	}
 
 	//Add any data uploaded with the files
 	if couchDoc.jsonValue != nil {
@@ -1237,7 +1161,7 @@ func (dbclient *couchDatabase) createIndex(indexdefinition string) (*createIndex
 	logger.Debugf("[%s] Entering CreateIndex()  indexdefinition=%s", dbName, indexdefinition)
 
 	//Test to see if this is a valid JSON
-	if isJSON(indexdefinition) != true {
+	if !isJSON(indexdefinition) {
 		return nil, errors.New("JSON format is not valid")
 	}
 
@@ -1735,11 +1659,10 @@ func (couchInstance *couchInstance) handleRequest(ctx context.Context, method, d
 		payloadData.ReadFrom(bytes.NewReader(data))
 
 		//Create request based on URL for couchdb operation
-		req, err := http.NewRequest(method, requestURL.String(), payloadData)
+		req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), payloadData)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "error creating http request")
 		}
-		req.WithContext(ctx)
 
 		//set the request to close on completion if shared connections are not allowSharedConnection
 		//Current CouchDB has a problem with zero length attachments, do not allow the connection to be reused.

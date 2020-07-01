@@ -326,7 +326,7 @@ func (c *Cache) StateCommitDone(channelName string) {
 	// between HandleStateUpdate and StateCommitDone, it's possible (in fact likely)
 	// that a chaincode invocation will acquire a read-lock on the world state, then attempt
 	// to get chaincode info from the cache, resulting in a deadlock.  So, we choose
-	// potential inconsistenty between the cache and the world state which the callers
+	// potential inconsistency between the cache and the world state which the callers
 	// must detect and cope with as necessary.  Note, the cache will always be _at least_
 	// as current as the committed state.
 	c.eventBroker.ApproveOrDefineCommitted(channelName)
@@ -488,11 +488,13 @@ func (c *Cache) update(initializing bool, channelID string, dirtyChaincodes map[
 			// name on this channel
 			for _, lc := range c.localChaincodes {
 				if ref, ok := lc.References[channelID][name]; ok {
-					if ref.InstallInfo == nil || localChaincode.Info == nil {
+					if ref.InstallInfo == nil {
 						continue
 					}
-					if ref.InstallInfo.PackageID == localChaincode.Info.PackageID {
-						continue
+					if localChaincode.Info != nil {
+						if ref.InstallInfo.PackageID == localChaincode.Info.PackageID {
+							continue
+						}
 					}
 
 					// remove existing local chaincode reference, which referred to a

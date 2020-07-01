@@ -8,6 +8,7 @@ package ledger
 
 import (
 	"fmt"
+	"hash"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -31,7 +32,7 @@ type Initializer struct {
 	HealthCheckRegistry             HealthCheckRegistry
 	Config                          *Config
 	CustomTxProcessors              map[common.HeaderType]CustomTxProcessor
-	Hasher                          Hasher
+	HashProvider                    HashProvider
 }
 
 // Config is a structure used to configure a ledger provider.
@@ -44,6 +45,8 @@ type Config struct {
 	PrivateDataConfig *PrivateDataConfig
 	// HistoryDBConfig holds the configuration parameters for the transaction history database.
 	HistoryDBConfig *HistoryDBConfig
+	// SnapshotsConfig holds the configuration parameters for the snapshots.
+	SnapshotsConfig *SnapshotsConfig
 }
 
 // StateDBConfig is a structure used to configure the state parameters for the ledger.
@@ -110,6 +113,12 @@ type PrivateDataConfig struct {
 // HistoryDBConfig is a structure used to configure the transaction history database.
 type HistoryDBConfig struct {
 	Enabled bool
+}
+
+// SnapshotsConfig is a structure used to configure snapshot function
+type SnapshotsConfig struct {
+	// RootDir is the top-level directory for the snapshots.
+	RootDir string
 }
 
 // PeerLedgerProvider provides handle to ledger instances
@@ -591,10 +600,14 @@ type DeployedChaincodeInfoProvider interface {
 	UpdatedChaincodes(stateUpdates map[string][]*kvrwset.KVWrite) ([]*ChaincodeLifecycleInfo, error)
 	// ChaincodeInfo returns the info about a deployed chaincode
 	ChaincodeInfo(channelName, chaincodeName string, qe SimpleQueryExecutor) (*DeployedChaincodeInfo, error)
+	// AllChaincodesInfo returns the mapping of chaincode name to DeployedChaincodeInfo for all the deployed chaincodes
+	AllChaincodesInfo(channelName string, qe SimpleQueryExecutor) (map[string]*DeployedChaincodeInfo, error)
 	// CollectionInfo returns the proto msg that defines the named collection. This function can be called for both explicit and implicit collections
 	CollectionInfo(channelName, chaincodeName, collectionName string, qe SimpleQueryExecutor) (*peer.StaticCollectionConfig, error)
 	// ImplicitCollections returns a slice that contains one proto msg for each of the implicit collections
 	ImplicitCollections(channelName, chaincodeName string, qe SimpleQueryExecutor) ([]*peer.StaticCollectionConfig, error)
+	// GenerateImplicitCollectionForOrg generates implicit collection for the org
+	GenerateImplicitCollectionForOrg(mspid string) *peer.StaticCollectionConfig
 	// AllCollectionsConfigPkg returns a combined collection config pkg that contains both explicit and implicit collections
 	AllCollectionsConfigPkg(channelName, chaincodeName string, qe SimpleQueryExecutor) (*peer.CollectionConfigPackage, error)
 }
@@ -639,7 +652,7 @@ type HealthCheckRegistry interface {
 // to be able to listen to chaincode lifecycle events. 'dbArtifactsTar' represents db specific artifacts
 // (such as index specs) packaged in a tar. Note that this interface is redefined here (in addition to
 // the one defined in ledger/cceventmgmt package). Using the same interface for the new lifecycle path causes
-// a cyclic import dependency. Moreover, eventually the whole package ledger/cceventmgmt is intented to
+// a cyclic import dependency. Moreover, eventually the whole package ledger/cceventmgmt is intended to
 // be removed when migration to new lifecycle is mandated.
 type ChaincodeLifecycleEventListener interface {
 	// HandleChaincodeDeploy is invoked when chaincode installed + defined becomes true.
@@ -691,10 +704,10 @@ func (e *InvalidTxError) Error() string {
 	return e.Msg
 }
 
-// Hasher implements the hash function that should be used for all ledger components.
+// HashProvider provides access to a hash.Hash for ledger components.
 // Currently works at a stepping stone to decrease surface area of bccsp
-type Hasher interface {
-	Hash(msg []byte, opts bccsp.HashOpts) (hash []byte, err error)
+type HashProvider interface {
+	GetHash(opts bccsp.HashOpts) (hash.Hash, error)
 }
 
 //go:generate counterfeiter -o mock/state_listener.go -fake-name StateListener . StateListener
