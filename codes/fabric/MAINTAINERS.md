@@ -9,14 +9,13 @@ Maintainers
 | Brett Logan | [btl5037][btl5037] | btl5037 | <brett.t.logan@ibm.com>
 | Artem Barger | [c0rwin][c0rwin] | c0rwin | <bartem@il.ibm.com>
 | Danny Cao | [caod123][caod123] | caod | <dcao@us.ibm.com>
+| Senthilnathan Natarajan | [cendhu][cendhu] | Senthil1 | <cendhu@gmail.com>
 | Chris Ferris | [christo4ferris][christo4ferris] | cbf | <chris.ferris@gmail.com>
 | Dave Enyeart | [denyeart][denyeart] | dave.enyeart | <enyeart@us.ibm.com>
 | Jay Guo | [guoger][guoger] | guoger | <guojiannan1101@gmail.com>
-| Jonathan Levi | [hacera][hacera] |JonathanLevi | <jonathan@hacera.com>
 | Jason Yellick | [jyellick][jyellick] | jyellick | <jyellick@us.ibm.com>
 | Manish Sethi | [manish-sethi][manish-sethi] | manish-sethi | <manish.sethi@gmail.com>
 | Gari Singh | [mastersingh24][mastersingh24] | mastersingh24 | <gari.r.singh@gmail.com>
-| Srinivasan Muralidharan | [muralisrini][muralisrini] | muralisr | <srinivasan.muralidharan99@gmail.com>
 | Matthew Sykes | [sykesm][sykesm] | sykesm | <sykesmat@us.ibm.com>
 | Yacov Manevich | [yacovm][yacovm] | yacovm | <yacovm@il.ibm.com>
 
@@ -46,9 +45,11 @@ Maintainers
 | Binh Nguyen | [binhn][binhn] | binhn | <binh1010010110@gmail.com>
 | Gabor Hosszu | [gabre][gabre] | hgabor | <gabor@digitalasset.com>
 | Greg Haskins | [ghaskins][ghaskins] | ghaskins | <gregory.haskins@gmail.com>
+| Jonathan Levi | [hacera][hacera] |JonathanLevi | <jonathan@hacera.com>
 | Yaoguo Jiang | [jiangyaoguo][jiangyaoguo] | jiangyaoguo | <jiangyaoguo@gmail.com>
 | Jim Zhang | [jimthematrix][jimthematrix] | jimthematrix | <jim_the_matrix@hotmail.com>
 | Kostas Christidis | [kchristidis][kchristidis] | kostas | <kostas@gmail.com>
+| Srinivasan Muralidharan | [muralisrini][muralisrini] | muralisr | <srinivasan.muralidharan99@gmail.com>
 | Keith Smith | [smithbk][smithbk] | smithbk | <bksmith@us.ibm.com>
 | Sheehan Anderson | [srderson][srderson] | sheehan | <sranderson@gmail.com>
 | Tamas Blummer | [tamasblummer][tamasblummer] | tamas | <tamas@digitalasset.com>
@@ -58,6 +59,7 @@ Maintainers
 [btl5037]: https://github.com/btl5037
 [c0rwin]: https://github.com/c0rwin
 [caod123]: https://github.com/caod123
+[cendhu]: https://github.com/cendhu
 [christo4ferris]: https://github.com/christo4ferris
 [denali49]: https://github.com/denali49
 [denyeart]: https://github.com/denyeart

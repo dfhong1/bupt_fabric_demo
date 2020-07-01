@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/sw"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/core/chaincode/lifecycle"
 	"github.com/hyperledger/fabric/core/common/privdata"
@@ -27,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/ledgermgmt"
 	corepeer "github.com/hyperledger/fabric/core/peer"
 	"github.com/hyperledger/fabric/core/scc/lscc"
+	"github.com/hyperledger/fabric/internal/fileutil"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protoutil"
@@ -53,7 +53,7 @@ func newEnv(t *testing.T) *env {
 	cryptoProvider, err := sw.NewDefaultSecurityLevelWithKeystore(sw.NewDummyKeyStore())
 	assert.NoError(t, err)
 	return newEnvWithInitializer(t, &ledgermgmt.Initializer{
-		Hasher: cryptoProvider,
+		HashProvider: cryptoProvider,
 		EbMetadataProvider: &externalbuilder.MetadataProvider{
 			DurablePath: "testdata",
 		},
@@ -160,13 +160,13 @@ func (e *env) verifyRebuilableDoesNotExist(flags rebuildable) {
 }
 
 func (e *env) verifyNonEmptyDirExists(path string) {
-	empty, err := util.DirEmpty(path)
+	empty, err := fileutil.DirEmpty(path)
 	e.assert.NoError(err)
 	e.assert.False(empty)
 }
 
 func (e *env) verifyDirDoesNotExist(path string) {
-	exists, _, err := util.FileExists(path)
+	exists, _, err := fileutil.FileExists(path)
 	e.assert.NoError(err)
 	e.assert.False(exists)
 }
@@ -177,10 +177,6 @@ func (e *env) initLedgerMgmt() {
 
 func (e *env) closeLedgerMgmt() {
 	e.ledgerMgr.Close()
-}
-
-func (e *env) getLedgerRootPath() string {
-	return e.initializer.Config.RootFSPath
 }
 
 func (e *env) getLevelstateDBPath() string {
@@ -255,6 +251,11 @@ func populateMissingsWithTestDefaults(t *testing.T, initializer *ledgermgmt.Init
 			MaxBatchSize:    5000,
 			BatchesInterval: 1000,
 			PurgeInterval:   100,
+		}
+	}
+	if initializer.Config.SnapshotsConfig == nil {
+		initializer.Config.SnapshotsConfig = &ledger.SnapshotsConfig{
+			RootDir: filepath.Join(initializer.Config.RootFSPath, "snapshots"),
 		}
 	}
 }

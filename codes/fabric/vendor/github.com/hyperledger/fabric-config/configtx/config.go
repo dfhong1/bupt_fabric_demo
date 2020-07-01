@@ -103,32 +103,40 @@ func (c *ConfigTx) UpdatedConfig() *cb.Config {
 	return c.updated
 }
 
-// ComputeUpdate computes the ConfigUpdate from a base and modified config transaction.
-func (c *ConfigTx) ComputeUpdate(channelID string) (*cb.ConfigUpdate, error) {
+// ComputeMarshaledUpdate computes the ConfigUpdate from a base and modified
+// config transaction and returns the marshaled bytes.
+func (c *ConfigTx) ComputeMarshaledUpdate(channelID string) ([]byte, error) {
 	if channelID == "" {
 		return nil, errors.New("channel ID is required")
 	}
 
-	updt, err := computeConfigUpdate(c.original, c.updated)
+	update, err := computeConfigUpdate(c.original, c.updated)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute update: %v", err)
 	}
 
-	updt.ChannelId = channelID
+	update.ChannelId = channelID
 
-	return updt, nil
-}
-
-// NewEnvelope creates an envelope with the provided config update and config signatures.
-func NewEnvelope(c *cb.ConfigUpdate, signatures ...*cb.ConfigSignature) (*cb.Envelope, error) {
-	cBytes, err := proto.Marshal(c)
+	marshaledUpdate, err := proto.Marshal(update)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling config update: %v", err)
 	}
 
+	return marshaledUpdate, nil
+}
+
+// NewEnvelope creates an envelope with the provided marshaled config update
+// and config signatures.
+func NewEnvelope(marshaledUpdate []byte, signatures ...*cb.ConfigSignature) (*cb.Envelope, error) {
 	configUpdateEnvelope := &cb.ConfigUpdateEnvelope{
-		ConfigUpdate: cBytes,
+		ConfigUpdate: marshaledUpdate,
 		Signatures:   signatures,
+	}
+
+	c := &cb.ConfigUpdate{}
+	err := proto.Unmarshal(marshaledUpdate, c)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshaling config update: %v", err)
 	}
 
 	envelope, err := newEnvelope(cb.HeaderType_CONFIG_UPDATE, c.ChannelId, configUpdateEnvelope)
@@ -139,11 +147,10 @@ func NewEnvelope(c *cb.ConfigUpdate, signatures ...*cb.ConfigSignature) (*cb.Env
 	return envelope, nil
 }
 
-// NewCreateChannelTx creates a create channel config update transaction using the
-// provided application channel configuration.
-func NewCreateChannelTx(channelConfig Channel, channelID string) (*cb.ConfigUpdate, error) {
-	var err error
-
+// NewMarshaledCreateChannelTx creates a create channel config update
+// transaction using the provided application channel configuration and returns
+// the marshaled bytes.
+func NewMarshaledCreateChannelTx(channelConfig Channel, channelID string) ([]byte, error) {
 	if channelID == "" {
 		return nil, errors.New("profile's channel ID is required")
 	}
@@ -153,19 +160,21 @@ func NewCreateChannelTx(channelConfig Channel, channelID string) (*cb.ConfigUpda
 		return nil, fmt.Errorf("creating default config template: %v", err)
 	}
 
-	configUpdate, err := newChannelCreateConfigUpdate(channelID, channelConfig, ct)
+	update, err := newChannelCreateConfigUpdate(channelID, channelConfig, ct)
 	if err != nil {
 		return nil, fmt.Errorf("creating channel create config update: %v", err)
 	}
 
-	return configUpdate, nil
+	marshaledUpdate, err := proto.Marshal(update)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config update: %v", err)
+	}
+	return marshaledUpdate, nil
 }
 
-// NewSystemChannelGenesisBlock creates a genesis block using the provided consortiums and orderer
-// configuration and returns a block.
+// NewSystemChannelGenesisBlock creates a genesis block using the provided
+// consortiums and orderer configuration and returns a block.
 func NewSystemChannelGenesisBlock(channelConfig Channel, channelID string) (*cb.Block, error) {
-	var err error
-
 	if channelID == "" {
 		return nil, errors.New("system channel ID is required")
 	}
@@ -175,7 +184,7 @@ func NewSystemChannelGenesisBlock(channelConfig Channel, channelID string) (*cb.
 		return nil, fmt.Errorf("creating system channel group: %v", err)
 	}
 
-	block, err := newSystemChannelBlock(systemChannelGroup, channelID)
+	block, err := newGenesisBlock(systemChannelGroup, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("creating system channel genesis block: %v", err)
 	}
@@ -183,40 +192,70 @@ func NewSystemChannelGenesisBlock(channelConfig Channel, channelID string) (*cb.
 	return block, nil
 }
 
-// newChannelGroup defines the root of the channel configuration.
-func newChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
-	var err error
-
-	channelGroup := newConfigGroup()
-
-	if channelConfig.Consortium == "" {
-		return nil, errors.New("consortium is not defined in channel config")
+// NewApplicationChannelGenesisBlock creates a genesis block using the provided
+// application and orderer configuration and returns a block.
+func NewApplicationChannelGenesisBlock(channelConfig Channel, channelID string) (*cb.Block, error) {
+	if channelID == "" {
+		return nil, errors.New("application channel ID is required")
 	}
 
-	err = setValue(channelGroup, consortiumValue(channelConfig.Consortium), "")
+	applicationChannelGroup, err := newApplicationChannelGroup(channelConfig)
+	if err != nil {
+		return nil, fmt.Errorf("creating application channel group: %v", err)
+	}
+
+	block, err := newGenesisBlock(applicationChannelGroup, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("creating application channel genesis block: %v", err)
+	}
+
+	return block, nil
+}
+
+// newSystemChannelGroup defines the root of the system channel configuration.
+func newSystemChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
+	channelGroup, err := newChannelGroupWithOrderer(channelConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	channelGroup.Groups[ApplicationGroupKey], err = newApplicationGroup(channelConfig.Application)
+	consortiumsGroup, err := newConsortiumsGroup(channelConfig.Consortiums)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create application group: %v", err)
+		return nil, err
 	}
+	channelGroup.Groups[ConsortiumsGroupKey] = consortiumsGroup
 
 	channelGroup.ModPolicy = AdminsPolicyKey
 
 	return channelGroup, nil
 }
 
-// newSystemChannelGroup defines the root of the system channel configuration.
-func newSystemChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
-	var err error
+// newApplicationChannelGroup defines the root of the application
+// channel configuration.
+func newApplicationChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
+	channelGroup, err := newChannelGroupWithOrderer(channelConfig)
+	if err != nil {
+		return nil, err
+	}
 
+	applicationGroup, err := newApplicationGroup(channelConfig.Application)
+	if err != nil {
+		return nil, err
+	}
+
+	channelGroup.Groups[ApplicationGroupKey] = applicationGroup
+
+	channelGroup.ModPolicy = AdminsPolicyKey
+
+	return channelGroup, nil
+}
+
+func newChannelGroupWithOrderer(channelConfig Channel) (*cb.ConfigGroup, error) {
 	channelGroup := newConfigGroup()
 
-	err = setPolicies(channelGroup, channelConfig.Policies, AdminsPolicyKey)
+	err := setPolicies(channelGroup, channelConfig.Policies, AdminsPolicyKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set system channel policies: %v", err)
+		return nil, fmt.Errorf("setting channel policies: %v", err)
 	}
 
 	err = setValue(channelGroup, hashingAlgorithmValue(), AdminsPolicyKey)
@@ -225,15 +264,6 @@ func newSystemChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
 	}
 
 	err = setValue(channelGroup, blockDataHashingStructureValue(), AdminsPolicyKey)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(channelConfig.Orderer.Addresses) == 0 {
-		return nil, errors.New("orderer endpoints is not defined in channel config")
-	}
-
-	err = setValue(channelGroup, ordererAddressesValue(channelConfig.Orderer.Addresses), ordererAdminsPolicyName)
 	if err != nil {
 		return nil, err
 	}
@@ -253,112 +283,16 @@ func newSystemChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
 	}
 	channelGroup.Groups[OrdererGroupKey] = ordererGroup
 
-	consortiumsGroup, err := newConsortiumsGroup(channelConfig.Consortiums)
-	if err != nil {
-		return nil, err
-	}
-	channelGroup.Groups[ConsortiumsGroupKey] = consortiumsGroup
-
-	channelGroup.ModPolicy = AdminsPolicyKey
-
 	return channelGroup, nil
 }
 
-// setValue sets the value as ConfigValue in the ConfigGroup.
-func setValue(cg *cb.ConfigGroup, value *standardConfigValue, modPolicy string) error {
-	v, err := proto.Marshal(value.value)
-	if err != nil {
-		return fmt.Errorf("marshaling standard config value '%s': %v", value.key, err)
-	}
-
-	if cg.Values == nil {
-		cg.Values = map[string]*cb.ConfigValue{}
-	}
-
-	cg.Values[value.key] = &cb.ConfigValue{
-		Value:     v,
-		ModPolicy: modPolicy,
-	}
-
-	return nil
-}
-
-// implicitMetaFromString parses a *cb.ImplicitMetaPolicy from an input string.
-func implicitMetaFromString(input string) (*cb.ImplicitMetaPolicy, error) {
-	args := strings.Split(input, " ")
-	if len(args) != 2 {
-		return nil, fmt.Errorf("expected two space separated tokens, but got %d", len(args))
-	}
-
-	res := &cb.ImplicitMetaPolicy{
-		SubPolicy: args[1],
-	}
-
-	switch args[0] {
-	case cb.ImplicitMetaPolicy_ANY.String():
-		res.Rule = cb.ImplicitMetaPolicy_ANY
-	case cb.ImplicitMetaPolicy_ALL.String():
-		res.Rule = cb.ImplicitMetaPolicy_ALL
-	case cb.ImplicitMetaPolicy_MAJORITY.String():
-		res.Rule = cb.ImplicitMetaPolicy_MAJORITY
-	default:
-		return nil, fmt.Errorf("unknown rule type '%s', expected ALL, ANY, or MAJORITY", args[0])
-	}
-
-	return res, nil
-}
-
-// ordererAddressesValue returns the a config definition for the orderer addresses.
-// It is a value for the /Channel group.
-func ordererAddressesValue(addresses []Address) *standardConfigValue {
-	var addrs []string
-	for _, a := range addresses {
-		addrs = append(addrs, fmt.Sprintf("%s:%d", a.Host, a.Port))
-	}
-
-	return &standardConfigValue{
-		key: OrdererAddressesKey,
-		value: &cb.OrdererAddresses{
-			Addresses: addrs,
-		},
-	}
-}
-
-// mspValue returns the config definition for an MSP.
-// It is a value for the /Channel/Orderer/*, /Channel/Application/*, and /Channel/Consortiums/*/*/* groups.
-func mspValue(mspDef *mb.MSPConfig) *standardConfigValue {
-	return &standardConfigValue{
-		key:   MSPKey,
-		value: mspDef,
-	}
-}
-
-// defaultConfigTemplate generates a config template based on the assumption that
-// the input profile is a channel creation template and no system channel context
-// is available.
-func defaultConfigTemplate(channelConfig Channel) (*cb.ConfigGroup, error) {
-	channelGroup, err := newChannelGroup(channelConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, ok := channelGroup.Groups[ApplicationGroupKey]; !ok {
-		return nil, errors.New("channel template config must contain an application section")
-	}
-
-	channelGroup.Groups[ApplicationGroupKey].Values = nil
-	channelGroup.Groups[ApplicationGroupKey].Policies = nil
-
-	return channelGroup, nil
-}
-
-// newSystemChannelBlock generates a genesis block by the config group and system channel ID
-// the block num is always zero
-func newSystemChannelBlock(cg *cb.ConfigGroup, channelID string) (*cb.Block, error) {
+// newGenesisBlock generates a genesis block from the config group and
+// channel ID. The block number is always zero.
+func newGenesisBlock(cg *cb.ConfigGroup, channelID string) (*cb.Block, error) {
 	payloadChannelHeader := channelHeader(cb.HeaderType_CONFIG, msgVersion, channelID, epoch)
 	nonce, err := newNonce()
 	if err != nil {
-		return nil, fmt.Errorf("try to get nonce: %v", err)
+		return nil, fmt.Errorf("creating nonce: %v", err)
 	}
 	payloadSignatureHeader := &cb.SignatureHeader{Creator: nil, Nonce: nonce}
 	payloadChannelHeader.TxId = computeTxID(payloadSignatureHeader.Nonce, payloadSignatureHeader.Creator)
@@ -408,6 +342,101 @@ func newSystemChannelBlock(cg *cb.ConfigGroup, channelID string) (*cb.Block, err
 	block.Metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES] = signatureMetadata
 
 	return block, nil
+}
+
+// setValue sets the value as ConfigValue in the ConfigGroup.
+func setValue(cg *cb.ConfigGroup, value *standardConfigValue, modPolicy string) error {
+	v, err := proto.Marshal(value.value)
+	if err != nil {
+		return fmt.Errorf("marshaling standard config value '%s': %v", value.key, err)
+	}
+
+	if cg.Values == nil {
+		cg.Values = map[string]*cb.ConfigValue{}
+	}
+
+	cg.Values[value.key] = &cb.ConfigValue{
+		Value:     v,
+		ModPolicy: modPolicy,
+	}
+
+	return nil
+}
+
+// implicitMetaFromString parses a *cb.ImplicitMetaPolicy from an input string.
+func implicitMetaFromString(input string) (*cb.ImplicitMetaPolicy, error) {
+	args := strings.Split(input, " ")
+	if len(args) != 2 {
+		return nil, fmt.Errorf("expected two space separated tokens, but got %d", len(args))
+	}
+
+	res := &cb.ImplicitMetaPolicy{
+		SubPolicy: args[1],
+	}
+
+	switch args[0] {
+	case cb.ImplicitMetaPolicy_ANY.String():
+		res.Rule = cb.ImplicitMetaPolicy_ANY
+	case cb.ImplicitMetaPolicy_ALL.String():
+		res.Rule = cb.ImplicitMetaPolicy_ALL
+	case cb.ImplicitMetaPolicy_MAJORITY.String():
+		res.Rule = cb.ImplicitMetaPolicy_MAJORITY
+	default:
+		return nil, fmt.Errorf("unknown rule type '%s', expected ALL, ANY, or MAJORITY", args[0])
+	}
+
+	return res, nil
+}
+
+// mspValue returns the config definition for an MSP.
+// It is a value for the /Channel/Orderer/*, /Channel/Application/*, and /Channel/Consortiums/*/*/* groups.
+func mspValue(mspDef *mb.MSPConfig) *standardConfigValue {
+	return &standardConfigValue{
+		key:   MSPKey,
+		value: mspDef,
+	}
+}
+
+// defaultConfigTemplate generates a config template based on the assumption that
+// the input profile is a channel creation template and no system channel context
+// is available.
+func defaultConfigTemplate(channelConfig Channel) (*cb.ConfigGroup, error) {
+	channelGroup, err := newChannelGroup(channelConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := channelGroup.Groups[ApplicationGroupKey]; !ok {
+		return nil, errors.New("channel template config must contain an application section")
+	}
+
+	channelGroup.Groups[ApplicationGroupKey].Values = nil
+	channelGroup.Groups[ApplicationGroupKey].Policies = nil
+
+	return channelGroup, nil
+}
+
+// newChannelGroup defines the root of the channel configuration.
+func newChannelGroup(channelConfig Channel) (*cb.ConfigGroup, error) {
+	channelGroup := newConfigGroup()
+
+	if channelConfig.Consortium == "" {
+		return nil, errors.New("consortium is not defined in channel config")
+	}
+
+	err := setValue(channelGroup, consortiumValue(channelConfig.Consortium), "")
+	if err != nil {
+		return nil, err
+	}
+
+	channelGroup.Groups[ApplicationGroupKey], err = newApplicationGroupTemplate(channelConfig.Application)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create application group: %v", err)
+	}
+
+	channelGroup.ModPolicy = AdminsPolicyKey
+
+	return channelGroup, nil
 }
 
 // newChannelCreateConfigUpdate generates a ConfigUpdate which can be sent to the orderer to create a new channel.

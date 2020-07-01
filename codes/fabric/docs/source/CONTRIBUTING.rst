@@ -1,20 +1,14 @@
 Contributions Welcome!
 ======================
 
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   style_guide
-
-We welcome contributions to Hyperledger in many forms, and
-there's always plenty to do!
+We welcome contributions to Hyperledger in many forms, and there's always plenty
+to do!
 
 First things first, please review the Hyperledger `Code of
 Conduct <https://wiki.hyperledger.org/community/hyperledger-project-code-of-conduct>`__
 before participating. It is important that we keep things civil.
 
-.. node:: If you want to contribute to this documentation, please check out the :doc:`style_guide`.
+.. note:: If you want to contribute to this documentation, please check out the :doc:`style_guide`.
 
 Ways to contribute
 ------------------
@@ -30,6 +24,28 @@ As a user:
   Contact the Epic assignee via the Jira work item or on
   `RocketChat <https://chat.hyperledger.org>`_.
 
+As a writer or information developer:
+
+- Update the documentation using your experience of Fabric and this
+  documentation to improve existing topics and create new ones.  A documentation
+  change is an easy way to get started as a contributor, makes it easier for
+  other users to understand and use Fabric, and grows your open source commit
+  history.
+
+- Participate in a language translation to keep the Fabric documentation current
+  in your chosen language.  The Fabric documentation is available in a number of
+  languages -- English, Chinese, Malayalam and Brazilian Portuguese -- so why
+  not join a team that keeps your favorite documentation up-to-date? You'll find
+  a friendly community of users, writers and developers to collaborate with.
+
+- Start a new language translation if the Fabric documentation isn't
+  available in your language.  The Chinese, Malayalam and Portuguese Brazilian
+  teams got started this way, and you can too!  It's more work, as you'll have
+  to form a community of writers, and organize contributions; but it's really
+  fulfilling to see the Fabric documentation available in your chosen language.
+
+Jump to `Contributing documentation`_ to get started on your journey.
+
 As a developer:
 
 - If you only have a little time, consider picking up a
@@ -40,7 +56,7 @@ As a developer:
   bring a team to implement it, or join one of the teams working on an existing Epic.
   If you see an Epic that interests you on the
   `release roadmap <https://jira.hyperledger.org/secure/Dashboard.jspa?selectPageId=10104>`_,
-  contact the Epic assignee via the Jira work item or on `RocketChat <https://chat.hyperledger.org/>`_.
+  contact the Epic assignee via the Jira work item or on `RocketChat <https://chat.hyperledger.org/>`__.
 
 Getting a Linux Foundation account
 ----------------------------------
@@ -72,6 +88,22 @@ already have one.
 
 6. Access `Jira issue management <https://jira.hyperledger.org>`__, or
    `RocketChat <https://chat.hyperledger.org/>`__.
+
+Contributing documentation
+--------------------------
+
+It's a good idea to make your first change a documentation change. It's quick
+and easy to do, checks that you have a correctly configured machine, (including
+the required pre-requisite software), and gets you familiar with the whole
+process.  Use the following sections to help you get started:
+
+.. toctree::
+   :maxdepth: 1
+
+   docs_guide
+   style_guide
+   international_languages
+
 
 Project Governance
 ------------------
@@ -414,11 +446,9 @@ Related Topics
 .. toctree::
    :maxdepth: 1
 
-   MAINTAINERS
    jira_navigation
    dev-setup/devenv
    dev-setup/build
-   testing
    style-guides/go-style
 
 .. Licensed under Creative Commons Attribution 4.0 International License

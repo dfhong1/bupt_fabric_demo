@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"errors"
+	"hash"
 	"io/ioutil"
 	"os"
 	"path"
@@ -20,15 +21,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	testNewHashFunc = func() (hash.Hash, error) {
+		return sha256.New(), nil
+	}
+)
+
 func TestFileCreateAndRead(t *testing.T) {
 	testDir := testPath(t)
 	defer os.RemoveAll(testDir)
 
 	// create file and encode some data
-	fileCreator, err := CreateFile(path.Join(testDir, "dataFile"), byte(5), sha256.New())
+	fileCreator, err := CreateFile(path.Join(testDir, "dataFile"), byte(5), testNewHashFunc)
+	require.NoError(t, err)
 	defer fileCreator.Close()
 
-	require.NoError(t, err)
 	require.NoError(t, fileCreator.EncodeString("Hi there"))
 	require.NoError(t, fileCreator.EncodeString("How are you?"))
 	require.NoError(t, fileCreator.EncodeString("")) // zreo length string
@@ -54,6 +61,7 @@ func TestFileCreateAndRead(t *testing.T) {
 
 	// open the file and verify the reads
 	fileReader, err := OpenFile(path.Join(testDir, "dataFile"), byte(5))
+	require.NoError(t, err)
 	defer fileReader.Close()
 
 	str, err := fileReader.DecodeString()
@@ -101,13 +109,14 @@ func TestFileCreatorErrorPropagation(t *testing.T) {
 	file, err := os.Create(existingFilePath)
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
-	_, err = CreateFile(existingFilePath, byte(1), sha256.New())
+	_, err = CreateFile(existingFilePath, byte(1), testNewHashFunc)
 	require.Contains(t, err.Error(), "error while creating the snapshot file: "+existingFilePath)
 
 	// error propagation from Encode functions.
 	// Mimic the errors by setting the writer to an error returning writer
 	dataFilePath := path.Join(testPath, "data-file")
-	fileCreator, err := CreateFile(dataFilePath, byte(1), sha256.New())
+	fileCreator, err := CreateFile(dataFilePath, byte(1), testNewHashFunc)
+	require.NoError(t, err)
 	defer fileCreator.Close()
 
 	fileCreator.multiWriter = &errorCausingWriter{err: errors.New("error-from-EncodeUVarint")}
@@ -152,7 +161,8 @@ func TestFileReaderErrorPropagation(t *testing.T) {
 
 	// a file with mismatched format info causes an error
 	unexpectedFormatFile := path.Join(testPath, "wrong-data-format-file")
-	fw, err := CreateFile(unexpectedFormatFile, byte(1), sha256.New())
+	fw, err := CreateFile(unexpectedFormatFile, byte(1), testNewHashFunc)
+	require.NoError(t, err)
 	require.NoError(t, fw.EncodeString("Hello there"))
 	_, err = fw.Done()
 	require.NoError(t, err)

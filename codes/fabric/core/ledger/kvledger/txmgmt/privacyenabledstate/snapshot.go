@@ -8,7 +8,7 @@ package privacyenabledstate
 
 import (
 	"hash"
-	"path"
+	"path/filepath"
 
 	"github.com/hyperledger/fabric/common/ledger/snapshot"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
@@ -26,35 +26,15 @@ const (
 // contains the exported public state and the files private_state_hashes.data and private_state_hashes.data contain the exported private state hashes.
 // The file format for public state and the private state hashes are the same. The data files contains a series of tuple <key,value> and the metadata
 // files contains a series of tuple <namespace, num entries for the namespace in the data file>.
-func (s *DB) ExportPubStateAndPvtStateHashes(dir string, newHasher func() hash.Hash) (map[string][]byte, error) {
+func (s *DB) ExportPubStateAndPvtStateHashes(dir string, newHashFunc snapshot.NewHashFunc) (map[string][]byte, error) {
 	itr, dbValueFormat, err := s.GetFullScanIterator(isPvtdataNs)
 	if err != nil {
 		return nil, err
 	}
 	defer itr.Close()
 
-	pubStateWriter, err := newSnapshotWriter(
-		path.Join(dir, pubStateDataFileName),
-		path.Join(dir, pubStateMetadataFileName),
-		dbValueFormat,
-		newHasher,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer pubStateWriter.close()
-
-	pvtStateHashesWriter, err := newSnapshotWriter(
-		path.Join(dir, pvtStateHashesFileName),
-		path.Join(dir, pvtStateHashesMetadataFileName),
-		dbValueFormat,
-		newHasher,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer pvtStateHashesWriter.close()
-
+	var pubStateWriter *snapshotWriter
+	var pvtStateHashesWriter *snapshotWriter
 	for {
 		compositeKey, dbValue, err := itr.Next()
 		if err != nil {
@@ -65,30 +45,61 @@ func (s *DB) ExportPubStateAndPvtStateHashes(dir string, newHasher func() hash.H
 		}
 		switch {
 		case isHashedDataNs(compositeKey.Namespace):
+			if pvtStateHashesWriter == nil { // encountered first time the pvt state hash element
+				pvtStateHashesWriter, err = newSnapshotWriter(
+					filepath.Join(dir, pvtStateHashesFileName),
+					filepath.Join(dir, pvtStateHashesMetadataFileName),
+					dbValueFormat,
+					newHashFunc,
+				)
+				if err != nil {
+					return nil, err
+				}
+				defer pvtStateHashesWriter.close()
+			}
 			if err := pvtStateHashesWriter.addData(compositeKey, dbValue); err != nil {
 				return nil, err
 			}
 		default:
+			if pubStateWriter == nil { // encountered first time the pub state element
+				pubStateWriter, err = newSnapshotWriter(
+					filepath.Join(dir, pubStateDataFileName),
+					filepath.Join(dir, pubStateMetadataFileName),
+					dbValueFormat,
+					newHashFunc,
+				)
+				if err != nil {
+					return nil, err
+				}
+				defer pubStateWriter.close()
+			}
 			if err := pubStateWriter.addData(compositeKey, dbValue); err != nil {
 				return nil, err
 			}
 		}
 	}
-	pubStateDataHash, pubStateMetadataHash, err := pubStateWriter.done()
-	if err != nil {
-		return nil, err
+
+	snapshotFilesInfo := map[string][]byte{}
+
+	if pubStateWriter != nil {
+		pubStateDataHash, pubStateMetadataHash, err := pubStateWriter.done()
+		if err != nil {
+			return nil, err
+		}
+		snapshotFilesInfo[pubStateDataFileName] = pubStateDataHash
+		snapshotFilesInfo[pubStateMetadataFileName] = pubStateMetadataHash
 	}
-	pvtStateHahshesDataHash, pvtStateHashesMetadataHash, err := pvtStateHashesWriter.done()
-	if err != nil {
-		return nil, err
+
+	if pvtStateHashesWriter != nil {
+		pvtStateHahshesDataHash, pvtStateHashesMetadataHash, err := pvtStateHashesWriter.done()
+		if err != nil {
+			return nil, err
+		}
+		snapshotFilesInfo[pvtStateHashesFileName] = pvtStateHahshesDataHash
+		snapshotFilesInfo[pvtStateHashesMetadataFileName] = pvtStateHashesMetadataHash
 	}
-	return map[string][]byte{
-			pubStateDataFileName:           pubStateDataHash,
-			pubStateMetadataFileName:       pubStateMetadataHash,
-			pvtStateHashesFileName:         pvtStateHahshesDataHash,
-			pvtStateHashesMetadataFileName: pvtStateHashesMetadataHash,
-		},
-		nil
+
+	return snapshotFilesInfo, nil
 }
 
 // snapshotWriter generates two files, a data file and a metadata file. The datafile contains a series of tuples <key, dbValue>
@@ -103,7 +114,7 @@ type snapshotWriter struct {
 func newSnapshotWriter(
 	dataFilePath, metadataFilePath string,
 	dbValueFormat byte,
-	newHasher func() hash.Hash,
+	newHash func() (hash.Hash, error),
 ) (*snapshotWriter, error) {
 
 	var dataFile, metadataFile *snapshot.FileWriter
@@ -115,7 +126,7 @@ func newSnapshotWriter(
 		}
 	}()
 
-	dataFile, err = snapshot.CreateFile(dataFilePath, snapshotFileFormat, newHasher())
+	dataFile, err = snapshot.CreateFile(dataFilePath, snapshotFileFormat, newHash)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +134,7 @@ func newSnapshotWriter(
 		return nil, err
 	}
 
-	metadataFile, err = snapshot.CreateFile(metadataFilePath, snapshotFileFormat, newHasher())
+	metadataFile, err = snapshot.CreateFile(metadataFilePath, snapshotFileFormat, newHash)
 	if err != nil {
 		return nil, err
 	}
